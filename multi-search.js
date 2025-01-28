@@ -1,6 +1,5 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const readline = require("readline");
 
 // Función para buscar en DuckDuckGo
 async function buscarEnDuckDuckGo(query, numResultados) {
@@ -86,45 +85,39 @@ function combinarResultados(resultadosTotales, numResultados) {
 
 // Función principal
 async function main() {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  const args = process.argv.slice(2); // Obtener argumentos de línea de comandos
 
-  console.log("=== Buscador Mejorado ===");
-  rl.question("¿Qué quieres buscar? ", async (query) => {
-    rl.question("¿Cuántos resultados deseas? ", async (numStr) => {
-      const numResultados = parseInt(numStr, 10);
-      if (isNaN(numResultados) || numResultados <= 0) {
-        console.error("[!] Por favor, introduce un número válido.");
-        rl.close();
-        return;
-      }
+  if (args.length < 2) {
+    console.error("Uso: node multi-search.js <consulta> <cantidad de resultados>");
+    process.exit(1);
+  }
 
-      console.log("\n[*] Iniciando búsquedas...");
-      const motores = [
-        buscarEnDuckDuckGo,
-        buscarEnBing,
-        buscarEnYahoo,
-      ];
-      let resultadosTotales = [];
+  const query = args[0]; // Primer argumento: la consulta
+  const numResultados = parseInt(args[1], 10); // Segundo argumento: cantidad de resultados
 
-      for (const motor of motores) {
-        const resultados = await motor(query, numResultados);
-        resultadosTotales = resultadosTotales.concat(resultados);
-      }
+  if (isNaN(numResultados) || numResultados <= 0) {
+    console.error("[!] La cantidad de resultados debe ser un número mayor a 0.");
+    process.exit(1);
+  }
 
-      const resultadosFinales = combinarResultados(resultadosTotales, numResultados);
-      if (resultadosFinales.length > 0) {
-        console.log("\n=== Resultados Combinados ===");
-        resultadosFinales.forEach((url, i) => console.log(`${i + 1}. ${url}`));
-      } else {
-        console.log("[!] No se encontraron resultados.");
-      }
+  console.log(`\n[*] Buscando: "${query}"`);
+  console.log(`[*] Cantidad de resultados deseados: ${numResultados}\n`);
 
-      rl.close();
-    });
-  });
+  const motores = [buscarEnDuckDuckGo, buscarEnBing, buscarEnYahoo];
+  let resultadosTotales = [];
+
+  for (const motor of motores) {
+    const resultados = await motor(query, numResultados);
+    resultadosTotales = resultadosTotales.concat(resultados);
+  }
+
+  const resultadosFinales = combinarResultados(resultadosTotales, numResultados);
+  if (resultadosFinales.length > 0) {
+    console.log("\n=== Resultados Combinados ===");
+    resultadosFinales.forEach((url, i) => console.log(`${i + 1}. ${url}`));
+  } else {
+    console.log("[!] No se encontraron resultados.");
+  }
 }
 
 main();
