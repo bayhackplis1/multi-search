@@ -1,0 +1,15 @@
+{
+  "name": "multi-search",
+  "version": "1.0.0",
+  "description": "Buscador que utiliza DuckDuckGo, Bing y Yahoo",
+  "main": "search.js",
+  "scripts": {
+    "start": "node search.js"
+  },
+  "author": "TuNombre",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.5.0",
+    "cheerio": "^1.0.0-rc.12"
+  }
+}
