@@ -1,86 +1,115 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
+// Configuración
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+const TIMEOUT = 10000; // 10 segundos
+const MAX_RETRIES = 2; // Número máximo de reintentos
+
+// Función para realizar solicitudes HTTP con reintentos
+async function fetchWithRetries(url, options, retries = MAX_RETRIES) {
+  try {
+    const response = await axios(url, { ...options, timeout: TIMEOUT });
+    return response.data;
+  } catch (error) {
+    if (retries > 0) {
+      console.warn(`[!] Reintentando (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
+      return fetchWithRetries(url, options, retries - 1);
+    }
+    throw error;
+  }
+}
+
 // Función para buscar en DuckDuckGo
 async function buscarEnDuckDuckGo(query, numResultados) {
   const resultados = [];
   const url = "https://html.duckduckgo.com/html/";
-  const headers = { "User-Agent": "Mozilla/5.0" };
+  const headers = { "User-Agent": USER_AGENT };
 
   try {
-    const response = await axios.post(url, `q=${encodeURIComponent(query)}`, {
+    const html = await fetchWithRetries(url, {
+      method: "POST",
       headers,
-      timeout: 10000,
+      data: `q=${encodeURIComponent(query)}`,
     });
-    const $ = cheerio.load(response.data);
+    const $ = cheerio.load(html);
     $("a.result__a").each((i, el) => {
       if (resultados.length < numResultados) {
         const href = $(el).attr("href");
-        if (href.startsWith("http")) resultados.push(href);
+        if (href && href.startsWith("http")) resultados.push({ url: href, source: "DuckDuckGo" });
       }
     });
-    return resultados;
   } catch (error) {
     console.error("[X] Error en DuckDuckGo:", error.message);
-    return [];
   }
+  return resultados;
 }
 
-// Función para buscar en Bing
-async function buscarEnBing(query, numResultados) {
+// Función para buscar en Startpage (similar a DuckDuckGo)
+async function buscarEnStartpage(query, numResultados) {
   const resultados = [];
-  const url = "https://www.bing.com/search";
-  const headers = { "User-Agent": "Mozilla/5.0" };
+  const url = "https://www.startpage.com/do/search";
+  const headers = { "User-Agent": USER_AGENT };
 
   try {
-    const response = await axios.get(url, {
+    const html = await fetchWithRetries(url, {
+      method: "GET",
       headers,
       params: { q: query, count: numResultados },
-      timeout: 10000,
     });
-    const $ = cheerio.load(response.data);
-    $("a").each((i, el) => {
-      const href = $(el).attr("href");
-      if (href && href.startsWith("http") && !href.includes("bing.com")) {
-        if (resultados.length < numResultados) resultados.push(href);
+    const $ = cheerio.load(html);
+    $("a.w-gl__result-url").each((i, el) => {
+      if (resultados.length < numResultados) {
+        const href = $(el).attr("href");
+        if (href && href.startsWith("http")) resultados.push({ url: href, source: "Startpage" });
       }
     });
-    return resultados;
   } catch (error) {
-    console.error("[X] Error en Bing:", error.message);
-    return [];
+    console.error("[X] Error en Startpage:", error.message);
   }
+  return resultados;
 }
 
 // Función para buscar en Yahoo
 async function buscarEnYahoo(query, numResultados) {
   const resultados = [];
   const url = "https://search.yahoo.com/search";
-  const headers = { "User-Agent": "Mozilla/5.0" };
+  const headers = { "User-Agent": USER_AGENT };
 
   try {
-    const response = await axios.get(url, {
+    const html = await fetchWithRetries(url, {
+      method: "GET",
       headers,
       params: { p: query },
-      timeout: 10000,
     });
-    const $ = cheerio.load(response.data);
+    const $ = cheerio.load(html);
     $("a").each((i, el) => {
       const href = $(el).attr("href");
       if (href && href.startsWith("http") && !href.includes("yahoo.com")) {
-        if (resultados.length < numResultados) resultados.push(href);
+        if (resultados.length < numResultados) resultados.push({ url: href, source: "Yahoo" });
       }
     });
-    return resultados;
   } catch (error) {
     console.error("[X] Error en Yahoo:", error.message);
-    return [];
   }
+  return resultados;
 }
 
 // Combinar resultados y eliminar duplicados
 function combinarResultados(resultadosTotales, numResultados) {
-  return [...new Set(resultadosTotales)].slice(0, numResultados);
+  const resultadosUnicos = [];
+  const urlsVistas = new Set();
+
+  for (const resultado of resultadosTotales) {
+    if (!urlsVistas.has(resultado.url)) {
+      urlsVistas.add(resultado.url);
+      resultadosUnicos.push(resultado);
+    }
+  }
+
+  // Ordenar por relevancia (simulado)
+  resultadosUnicos.sort((a, b) => a.source.localeCompare(b.source)); // Ejemplo simple de ordenamiento
+  return resultadosUnicos.slice(0, numResultados);
 }
 
 // Función principal
@@ -103,20 +132,22 @@ async function main() {
   console.log(`\n[*] Buscando: "${query}"`);
   console.log(`[*] Cantidad de resultados deseados: ${numResultados}\n`);
 
-  const motores = [buscarEnDuckDuckGo, buscarEnBing, buscarEnYahoo];
-  let resultadosTotales = [];
+  const motores = [buscarEnDuckDuckGo, buscarEnStartpage, buscarEnYahoo];
 
-  for (const motor of motores) {
-    const resultados = await motor(query, numResultados);
-    resultadosTotales = resultadosTotales.concat(resultados);
-  }
+  try {
+    // Realizar búsquedas en paralelo
+    const resultadosPorMotor = await Promise.all(motores.map((motor) => motor(query, numResultados)));
+    const resultadosTotales = resultadosPorMotor.flat();
 
-  const resultadosFinales = combinarResultados(resultadosTotales, numResultados);
-  if (resultadosFinales.length > 0) {
-    console.log("\n=== Resultados Combinados ===");
-    resultadosFinales.forEach((url, i) => console.log(`${i + 1}. ${url}`));
-  } else {
-    console.log("[!] No se encontraron resultados.");
+    const resultadosFinales = combinarResultados(resultadosTotales, numResultados);
+    if (resultadosFinales.length > 0) {
+      console.log("\n=== Resultados Combinados ===");
+      resultadosFinales.forEach((resultado, i) => console.log(`${i + 1}. [${resultado.source}] ${resultado.url}`));
+    } else {
+      console.log("[!] No se encontraron resultados.");
+    }
+  } catch (error) {
+    console.error("[X] Error en la búsqueda:", error.message);
   }
 }
 
