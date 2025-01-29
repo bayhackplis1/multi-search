@@ -13,7 +13,6 @@ async function fetchWithRetries(url, options, retries = MAX_RETRIES) {
     return response.data;
   } catch (error) {
     if (retries > 0) {
-      console.warn(`[!] Reintentando (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})...`);
       return fetchWithRetries(url, options, retries - 1);
     }
     throw error;
@@ -36,16 +35,14 @@ async function buscarEnDuckDuckGo(query, numResultados) {
     $("a.result__a").each((i, el) => {
       if (resultados.length < numResultados) {
         const href = $(el).attr("href");
-        if (href && href.startsWith("http")) resultados.push({ url: href, source: "DuckDuckGo" });
+        if (href && href.startsWith("http")) resultados.push(href);
       }
     });
-  } catch (error) {
-    console.error("[X] Error en DuckDuckGo:", error.message);
-  }
+  } catch (error) {}
   return resultados;
 }
 
-// Función para buscar en Startpage (similar a DuckDuckGo)
+// Función para buscar en Startpage
 async function buscarEnStartpage(query, numResultados) {
   const resultados = [];
   const url = "https://www.startpage.com/do/search";
@@ -61,12 +58,10 @@ async function buscarEnStartpage(query, numResultados) {
     $("a.w-gl__result-url").each((i, el) => {
       if (resultados.length < numResultados) {
         const href = $(el).attr("href");
-        if (href && href.startsWith("http")) resultados.push({ url: href, source: "Startpage" });
+        if (href && href.startsWith("http")) resultados.push(href);
       }
     });
-  } catch (error) {
-    console.error("[X] Error en Startpage:", error.message);
-  }
+  } catch (error) {}
   return resultados;
 }
 
@@ -86,63 +81,44 @@ async function buscarEnYahoo(query, numResultados) {
     $("a").each((i, el) => {
       const href = $(el).attr("href");
       if (href && href.startsWith("http") && !href.includes("yahoo.com")) {
-        if (resultados.length < numResultados) resultados.push({ url: href, source: "Yahoo" });
+        if (resultados.length < numResultados) resultados.push(href);
       }
     });
-  } catch (error) {
-    console.error("[X] Error en Yahoo:", error.message);
-  }
+  } catch (error) {}
   return resultados;
 }
 
 // Combinar resultados y eliminar duplicados
 function combinarResultados(resultadosTotales, numResultados) {
-  const resultadosUnicos = [];
-  const urlsVistas = new Set();
-
-  for (const resultado of resultadosTotales) {
-    if (!urlsVistas.has(resultado.url)) {
-      urlsVistas.add(resultado.url);
-      resultadosUnicos.push(resultado);
-    }
-  }
-
-  // Ordenar por relevancia (simulado)
-  resultadosUnicos.sort((a, b) => a.source.localeCompare(b.source)); // Ejemplo simple de ordenamiento
-  return resultadosUnicos.slice(0, numResultados);
+  return [...new Set(resultadosTotales)].slice(0, numResultados);
 }
 
 // Función principal
 async function main() {
-  const args = process.argv.slice(2); // Obtener argumentos de línea de comandos
-
+  const args = process.argv.slice(2);
   if (args.length < 2) {
     console.error("Uso: node multi-search.js <consulta> <cantidad de resultados>");
     process.exit(1);
   }
 
-  const query = args[0]; // Primer argumento: la consulta
-  const numResultados = parseInt(args[1], 10); // Segundo argumento: cantidad de resultados
-
+  const query = args[0];
+  const numResultados = parseInt(args[1], 10);
   if (isNaN(numResultados) || numResultados <= 0) {
     console.error("[!] La cantidad de resultados debe ser un número mayor a 0.");
     process.exit(1);
   }
 
   console.log(`\n[*] Buscando: "${query}"`);
-  console.log(`[*] Cantidad de resultados deseados: ${numResultados}\n`);
 
   const motores = [buscarEnDuckDuckGo, buscarEnStartpage, buscarEnYahoo];
 
   try {
-    // Realizar búsquedas en paralelo
     const resultadosPorMotor = await Promise.all(motores.map((motor) => motor(query, numResultados)));
     const resultadosTotales = resultadosPorMotor.flat();
-
     const resultadosFinales = combinarResultados(resultadosTotales, numResultados);
     if (resultadosFinales.length > 0) {
       console.log("\n=== Resultados Combinados ===");
-      resultadosFinales.forEach((resultado, i) => console.log(`${i + 1}. [${resultado.source}] ${resultado.url}`));
+      resultadosFinales.forEach((url, i) => console.log(`${i + 1}. ${url}`));
     } else {
       console.log("[!] No se encontraron resultados.");
     }
